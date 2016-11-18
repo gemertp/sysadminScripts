@@ -1,0 +1,7 @@
+#! /usr/bin/bash
+################
+
+swapoff $1
+swapon -s
+
+# eos

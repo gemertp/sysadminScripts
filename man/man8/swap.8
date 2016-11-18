@@ -1,0 +1,208 @@
+.TH "SWAP" "8" "November 2016" "sysadminScripts" "System Management Commands"
+
+.SH "NAME"
+swap \- Enable or disable swapspaces
+
+.SH "SYNOPSIS"
+.B swap 
+\-l [\-v] [\-u]
+.sp
+.B swap
+\-e \-f swapfile [\-s sizeM | sizeG] [\-p]
+.sp
+.B swap
+\-d \-f swapfile [\-r] [\-p]
+
+
+.SH "DESCRIPTION"
+The 
+.B swap 
+command can be used to enable and disable swapspaces.
+
+The 
+.B \-e
+option indicates that a swapspace should be activated. The name of
+the swapspace is given with the
+.B \-f
+option. If the given swapspace is not
+found in the system, the swapspace will be created with a default
+size of 500M. The default size can be overwriten with the
+.B \-s
+option. Swap only accepts 
+.B / 
+and 
+.B /var/tmp 
+as locations for swapspaces. The activated swapspaces are only
+temporary changes to the system. The 
+.B \-p
+option can be used to make the change permanent.
+.sp
+
+The 
+.B \-d 
+option defines that the swapspace indicated by the
+.B \-f 
+option should be deactivated. When the
+.B \-r 
+option is given, the actual swapfile is removed
+from the system. Again, with the 
+.B \-p 
+option the change is permantently applied to the
+system. The 
+.B \-r 
+option implies that the 
+.B \-p 
+option is also given.
+
+.SH "OPTIONS"
+.TP
+.BR \-d , "  \-\-disable"
+Disable a swapspace. The name of the swapspace is defined
+by the
+.B \-f
+option.
+
+.TP
+.BR \-e , "  \-\-enable"
+Enable a swapspace. The name of the swapspace to
+be activated has to be given with the
+.B \-f
+option.
+.TP
+
+.BR \-f , "  \-\-file  " \fIname\fR
+Define swapspace name. \fIname\fR should be a full path
+and can only be in / (root) and /var/tmp. While it is
+technically possible to place \fIname\fR in almost any 
+directory, swap only accepts / and /var/tmp as valid
+locations.
+
+If \fIname\fR does not exists
+.B swap
+will create the file with a default size of 500M. This
+default can be overwritten with the
+.B \-s
+option.
+
+.TP
+.B \-h , "  \-\-help"
+Show help.
+
+.TP
+.BR \-l , "  \-\-list"
+Show current swap confguration. The following information 
+is part of the 
+.B \-l 
+report: swapon -c , /etc/fstab , free
+
+The 
+.B \-v
+option adds vmstat output.  See the
+.B \-v
+option for more information.
+
+.TP
+.BR \-p ,  "  \-\-permanent"
+Make changes permanent. This options applies to both the
+.B \-e
+and 
+.B \-d
+options.
+
+.TP
+.BR \-r , "  \-\-remove"
+Remove actual swapspace file. Only applicable with the
+.B \-d
+option and swapspaces that are regular files. Swapdevices
+cannot be removed but they can still be disabled. 
+
+The 
+.B \-d
+option implies that the 
+.B \-p option 
+is enabled as well. There is no sense in 
+removing the actual swapspace file but still reference
+it from /etc/fstab.
+
+.TP
+.BR \-s , "  \-\-size"
+Size of swapspace. This option only applies to swapspaces
+that do not exist and that will be created by
+swap. It will \fInot\fR adjust the size of existing swapspaces.
+
+The size can given in Megabytes or Gigabytes use the M or
+G indicator. e.g. 500M equals 500Megabytes, 1G equals
+1Gigabyte. The indicator has to be in capital.
+
+.TP
+.BR \-u , "  \-\-utilization"
+Add 10 lines of sar output to the report. This option is
+only valid with the
+.B \-l
+option.
+
+
+.TP
+.BR \-v , "  \-\-verbose"
+Add 10 lines of vmstat output to the report. This option is 
+only valid with the 
+.B \-l
+option.
+
+.SH "EXAMPLES"
+List the basic swap configuration.
+
+      # swap -l
+
+List swap configuration with current statistics.
+
+      # swap -l -v
+
+List swap configuration with current utilization.
+
+      # swap -l -u
+
+Temporarily enable /var/tmp/swapfile as swapdevice. If file does not 
+exist, it will be created with 500M as default size.
+
+      # swap -e -f /var/tmp/swapfile
+
+Permanently enable /var/tmp/swapfile. 
+
+      # swap -e -f /var/tmp/swapfile -p
+
+Enable /var/tmp/swapfile with size 1024M. (file does not exist).
+
+      # swap -e -f /var/tmp/swapfile -s 1024M
+
+Like previous command but now make the change permanent
+
+      # swap -e -f /var/tmp/swapfile -s 1024M -p
+
+Temporarily disable a swapspwace
+
+      # swap -d -f /var/tmp/swapfile
+
+Permanently disable a swapspace
+
+      # swap -d -f /var/tmp/swapfile -p
+
+Remove the swapfile after disabling it
+
+      # swap -d -f /var/tmp/swapfile -r
+
+.SH "BUGS"
+Probably available but swap was not heavily tested so none
+where found yet.
+
+.SH "AUTHOR"
+Written by Peter A. van Gemert.
+
+.SH "SEE ALSO"
+.BR free (1),
+.BR fstab (5),
+.BR mkswap (8),
+.BR swapoff (8),
+.BR swapon (8),
+.BR vmstat (8)
+

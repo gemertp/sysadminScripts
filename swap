@@ -1,0 +1,424 @@
+#! /bin/bash
+############
+# swap
+# 
+# Syntax  : # swap 
+# Purpose : Swap management tool
+#
+#
+#
+#
+# Versiebeheer
+# 1.0    PeterVG    Mist-Of-Time
+
+
+##########
+# Set variables
+#
+# Command variables. Change these variables if
+# these commands are located in different directories
+#
+CMD_DD=/usr/bin/dd
+CMD_FREE=/usr/bin/free
+FILE_FSTAB=/etc/fstab
+CMD_GAWK=/usr/bin/gawk
+CMD_GETOPT=/usr/bin/getopt
+CMD_GREP=/usr/bin/grep
+CMD_MKSWAP=/usr/sbin/mkswap
+CMD_STAT=/usr/bin/stat
+CMD_SAR=/usr/bin/sar
+CMD_SWAPON=/usr/sbin/swapon
+CMD_SWAPOFF=/usr/sbin/swapoff
+CMD_VMSTAT=/usr/bin/vmstat
+
+
+##########
+# Check if CMD_ variables are actually available
+# Swap depends on some commands to work correctly
+# but we cannot be sure that these commands are 
+# actually available. Here we test if these commands
+# are available. If not we abort the script.
+# 
+count=0
+while read CMDVAR ; do
+    if [[ ! -e ${CMDVAR##*=} ]] ; then
+        if [[ $count -eq 0 ]] ; then
+            echo "Error :" >&2
+        fi
+        count=$( expr $count + 1 )
+        echo "   ${CMDVAR} not found on this system." >&2
+    fi
+done << EOF
+$( set | grep ^CMD )
+EOF
+    # Above I put the output of the pipe in a 
+    # here document. I need this because I cannot
+    # pipe the output into a while because this
+    # runs the while in a subshell and this
+    # prevents me from given the count variable
+    # back to the main process. When while is
+    # run directly, it will not run a subprocess.
+
+
+# If one or more commands where not found I
+# abort the script here.
+[[ $count -gt 0 ]] && exit 9
+
+
+##########
+# Define options
+#
+opt_l=1     # List
+opt_e=2     # Enable
+opt_d=4     # Disable
+opt_s=8     # Size
+opt_v=16    # verbose (vmstat)
+opt_r=32    # Remove 
+opt_p=64    # Permanent
+opt_f=128   # Filename
+opt_h=256   # Help
+opt_u=512   # Utilization (sar)
+
+options=0;  # Options set
+
+
+##########
+# Function usage
+#
+function usage {
+    echo "Swap"
+    echo 
+    echo "Usage"
+    echo "  -l  --list          Show current swap confguration"
+    echo "  -v  --verbose       Add vmstat output to -l"
+    echo "  -u  --utilization   Add sar -S ouput to -l"
+    echo
+    echo "  -e  --enable        Enable a swapspace"
+    echo "  -f  --file          Define swapspace name"
+    echo "  -p  --permanent     Make changes permanent"
+    echo "  -s  --size          Size of swapspace"
+    echo
+    echo "  -d  --disable       Disable a swapspace"
+    echo "  -f  --file          Define swapspace name"
+    echo "  -p  --permanent     Make changes permanent"
+    echo "  -r  --remove        Remove actual swapspace file"
+    echo
+    echo "  -h  --help          Show this help"
+    echo
+    exit 0
+} # eof usage
+
+
+##########
+# Process options and parameters
+# We support short and long options.
+ARGLIST=$($CMD_GETOPT -o :lvuapdrf:s: --long list,verbose,utilization,enable,permanent,disable,remove,file:,size: -- "$@")
+eval set -- $ARGLIST
+
+for option in $@ ; do
+    case $option in
+        -l|--l|--list)    
+                (( options&opt_l )) || (( options=$options+$opt_l ))
+                shift 1
+                ;;
+
+        -e|--e|--enable)
+                (( options&opt_e )) || (( options=$options+$opt_e ))
+                shift 1
+                ;;
+
+        -d|--d|--disable)  
+                (( options&opt_d )) || (( options=$options+$opt_d ))
+                shift 1
+                ;;
+
+        -f|--f|--file)    
+                (( options&opt_f )) || (( options=$options+$opt_f ))
+                opt_f_arg=$2
+                shift 2
+                ;;
+
+        -s|--s|--size)    
+                (( options&opt_s)) || (( options=$options+$opt_s ))
+                opt_s_arg=$2
+                shift 2
+                ;;
+
+        -v|--v|--verbose)
+                (( options&opt_v)) || (( options=$options+$opt_v ))
+                ;;
+
+        -r|--r|--remove)
+                (( options&opt_r)) || (( options=$options+$opt_r ))
+                ;;
+
+        -p|--p|--permanent)
+                (( options&opt_d)) || (( options=$options+$opt_p ))
+                ;;
+
+        -h|--h|--help)
+                (( options&opt_h)) || (( options=$options+$opt_h ))
+                ;;
+        
+        -u|--u|--utilization)
+                (( options&opt_u)) || (( options=$options+$opt_u ))
+                ;;
+    esac
+done
+
+
+# Abort script if no options are given. At this point we could also have written
+# code that -l is the default if no option is given. I've opted for an error message.
+if (( options == 0 )) ; then
+    usage
+    exit 2
+
+    #(( options=$options+opt_l ))
+fi
+
+
+
+
+##########
+# List current active swap configuration
+#
+# -l list configuration
+# -l -v Show vmstat as well
+#
+if (( (options & opt_l) )) ; then
+
+    if [[ -x $CMD_SWAPON ]] ; then
+        echo
+        echo "** Active swap spaces ($CMD_SWAPON)"
+        echo -----------------------------------------------------
+        swapon -s
+    else
+        echo "!! Omitted output from $CMD_SWAPON."
+    fi
+        
+
+
+    if [[ -r /etc/fstab ]] ; then
+        echo
+        echo
+        echo "** Swap definitions at boot ($FILE_FSTAB)"
+        echo -----------------------------------------------------
+        ${CMD_GREP} swap /etc/fstab 2>/dev/null
+    else
+        echo "!! Omitted output from $FILE_FSTAB."
+    fi
+    
+
+    
+    if [[ -x $CMD_FREE ]] ; then
+        echo
+        echo
+        echo "** Swap usage ($CMD_FREE)"
+        echo -----------------------------------------------------
+        free
+    else
+        echo "!! Omitted output from $CMD_FREE."
+    fi
+
+
+    if (( (options & opt_v) )) ; then
+
+        if [[ -x $CMD_VMSTAT ]] ; then
+            echo
+            echo
+            echo "** Swap activity ($CMD_VMSTAT)"
+            $CMD_VMSTAT 1 10
+        else
+            echo "!! Omitted output from $CMD_VMSTAT."
+        fi
+    fi
+
+    if (( (options & opt_u) )) ; then
+        
+        if [[ -x $CMD_SAR ]] ; then
+            echo
+            echo
+            echo "** Swap utilization ($CMD_SAR)"
+            $CMD_SAR -S 1 10
+        else
+            echo "!! Omitted output from $CMD_SAR."
+        fi
+    fi
+    
+    exit 0
+fi # eof $opt_l
+
+
+##########
+# swap needs root privileges
+#
+user=$( id | cut -d= -f2 | cut -d'(' -f1 )
+if [[ $user -ne 0 ]] ; then
+    echo "Error : swap needs to be run as root." >&2
+    exit 2
+fi
+
+
+##########
+# Activate the given swapspace.
+# Swapspace can not be place in /usr, /etc 
+#
+if (( (options & opt_e) && (options & opt_f) )) ; then
+
+    if [[ -n $opt_f_arg ]] ; then
+
+        if [[ $opt_f_arg == /dev* ]] ; then
+        ## Process a device as swapspace.
+
+            echo "Swapspace is a device"
+        
+            if [[ -e $opt_f_arg ]] ; then
+                if ${CMD_SWAPON} -s | ${CMD_GREP} $opt_f_arg >/dev/null 2>&1 ; then
+                    echo "Error: $opt_f_arg already in use as swapspace" >&2
+                    exit 3
+                fi
+            else
+                echo "Error: $opt_f_arg not found." >&2
+                exit 3
+            fi
+
+        else 
+        ## Process a file as swapspace
+            if [[ -e $opt_f_arg ]] ; then
+
+                # If the swapspace already exists, we only need to check
+                # the ownership and permissions and then we can activate
+                # the swapspace.
+                if ${CMD_SWAPON} -s | ${CMD_GREP} $opt_f_arg >/dev/null 2>&1 ; then
+                    echo "Error : $opt_f_arg already in use as swapspace" >&2
+                    exit 3
+                fi
+
+                owner=$( ls -l $opt_f_arg | ${CMD_GAWK} '{print $3}' )
+                group=$( ls -l $opt_f_arg | ${CMD_GAWK} '{print $4}' )
+                if [[ $owner != root || $group != root ]] ; then
+                    echo "Error : $opt_f_arg is not owned by root ($owner:$group)" >&2
+                    exit 3
+                fi
+
+                fperm=$( ${CMD_STAT} -c "%a" $opt_f_arg )
+                if [[ $fperm != 600 ]] ; then
+                    echo "Error: $opt_f_arg hso incorrect permissions ($fperm)" >&2
+                    exit 3
+                fi
+            else
+                # If the swapspace does not exist, we are going to create on.
+                # If the size is not given we assume 500M.
+                echo "Creating swapspace ($opt_f_arg)"
+
+                # We only support swapfiles in / and /var/tmp
+                dirname=$(dirname $opt_f_arg)
+                if [[ $dirname != / && $dirname != /var/tmp ]] ; then
+                    echo "Error : Swapspaces can only be placed in / or /var/tmp" >&2
+                    exit 3
+                fi    
+                
+                # If no size is given, we assume 500M. 
+                # We report an error when size is not in correct form.
+                if [[ -z $opt_s_arg ]] ; then 
+                    opt_s_arg=500M
+                fi            
+                if echo $opt_s_arg | ${CMD_GREP} -v "^[0-9][0-9]*[MG]$" ; then
+                    echo "Error : Given size ($opt_s_arg) not correct" >&2
+                    exit 3
+                fi
+
+                ${CMD_DD} if=/dev/zero of=$opt_f_arg bs=$opt_s_arg count=1 >/dev/null 2>&1
+            fi
+        fi
+        # When we get here we know that the given swapspace is valid
+        # as swapspace so we can start using it.
+        ${CMD_MKSWAP} $opt_f_arg >/dev/null 2>&1 
+        ${CMD_SWAPON} $opt_f_arg >/dev/null 2>&1
+
+
+        if (( (options & opt_p) )) ; then
+            if [[ -n $opt_f_arg ]] ; then
+                if ${CMD_GREP} $opt_f_arg /etc/fstab >/dev/null 2>/dev/null ; then
+                    echo "Warning : $opt_f_arg already configured in /etc/fstab"
+                    exit 3
+                fi
+                (
+                    fsline="$opt_f_arg"'   swap   swap                  defaults    0 0'
+                    cp /etc/fstab /etc/fstab.swap.$(date +%Y%m%d%H%M%S)
+                    echo $fsline >> /etc/fstab
+                ) >/dev/null 2>&1
+            fi
+        fi
+
+        exit 0
+
+    else
+        echo "Error: No swapspace given to activate." >&2
+        exit 3
+    fi    
+fi
+
+
+##########
+# If requested we deactive and remove given swapspaces
+# here. Only file based swapspaces wille be deleted if
+# the -r option is given. Device swapspace will not be
+# deleted only deactivated. It will also only
+# deactive 
+# -d deactivate given swapspace, temporary
+# -d -r remove give swapspace and remove (rm) and from
+#       configuration
+if (( (options & opt_d) && (options & opt_f) )) ; then
+
+    if [[ -n $opt_f_arg ]] ; then
+        if ${CMD_SWAPON} -s | ${CMD_GREP} -w $opt_f_arg >/dev/null 2>&1 ; then
+            echo "Disabling $opt_f_arg"
+            ${CMD_SWAPOFF} $opt_f_arg >/dev/null 2>&1
+        else
+            echo "Error : $opt_f_arg not in use as swap device" >&2
+            exit 4
+        fi
+
+        if (( (options&opt_r) )) ; then
+            
+            if [[ $opt_f_arg == /dev* ]] ; then
+                echo "Swapspace is a device"
+                echo "Cannot remove swapspace"
+            else
+                echo "Swapspace is a file"
+                echo "Removing $opt_f_arg"
+                rm $opt_f_arg >/dev/null 2>&1
+            fi
+
+            # If option -r is pressed we need to make
+            # sure that the swapspace is also removed
+            # from the configuration. We ensure this
+            # by enabling the -p option.
+            (( options=$options+$opt_p ))
+            
+        fi
+
+        if (( (options&opt_p) )) ; then
+            echo "Changing swap configuration"
+
+            (
+                cp /etc/fstab /etc/fstab.swap.$(date +%Y%m%d%H%M%S)
+                ${CMD_GREP} -v $opt_f_arg /etc/fstab > /etc/fstab.swap
+                mv /etc/fstab.swap /etc/fstab
+            ) >/dev/null 2>&1
+        fi
+            
+            
+        exit 0
+    else
+        echo "Error : No swapspace given to deactivate" >&2
+        exit 4
+    fi
+
+    exit 0 
+fi # eof opt_d
+
+usage
+
+# eos

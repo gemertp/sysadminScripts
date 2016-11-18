@@ -1,0 +1,7 @@
+#! /usr/bin/bash
+
+mkswap $1
+swapon $1
+swapon -s
+
+# eos
