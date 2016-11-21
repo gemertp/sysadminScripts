@@ -9,7 +9,8 @@
 #
 #
 # Versiebeheer
-# 1.0    PeterVG    Mist-Of-Time
+# 1.0   PeterVG     Mist-Of-Time
+# 1.0.1 PeterVG     FILE_FSTAB aangepast
 
 
 ##########
@@ -203,7 +204,7 @@ if (( (options & opt_l) )) ; then
         echo
         echo "** Swap definitions at boot ($FILE_FSTAB)"
         echo -----------------------------------------------------
-        ${CMD_GREP} swap /etc/fstab 2>/dev/null
+        ${CMD_GREP} swap ${FILE_FSTAB} 2>/dev/null
     else
         echo "!! Omitted output from $FILE_FSTAB."
     fi
