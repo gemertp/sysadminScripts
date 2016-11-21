@@ -19,9 +19,12 @@
 # Command variables. Change these variables if
 # these commands are located in different directories
 #
+VERSION="1.0.1"
+
+FILE_FSTAB=/etc/fstab
+
 CMD_DD=/usr/bin/dd
 CMD_FREE=/usr/bin/free
-FILE_FSTAB=/etc/fstab
 CMD_GAWK=/usr/bin/gawk
 CMD_GETOPT=/usr/bin/getopt
 CMD_GREP=/usr/bin/grep
@@ -31,6 +34,13 @@ CMD_SAR=/usr/bin/sar
 CMD_SWAPON=/usr/sbin/swapon
 CMD_SWAPOFF=/usr/sbin/swapoff
 CMD_VMSTAT=/usr/bin/vmstat
+
+RV_GOOD=0
+RV_ENOARG=1     # Error no argument
+RV_EACT=3       # Error activate
+RV_EDIS=4       # Error disable
+RV_ENOROOT=8    # Error no root account
+RV_ENOCMD=9     # Error no command found
 
 
 ##########
@@ -63,7 +73,7 @@ EOF
 
 # If one or more commands where not found I
 # abort the script here.
-[[ $count -gt 0 ]] && exit 9
+[[ $count -gt 0 ]] && exit $NOECMD
 
 
 ##########
@@ -80,14 +90,14 @@ opt_f=128   # Filename
 opt_h=256   # Help
 opt_u=512   # Utilization (sar)
 
-options=0;  # Options set
+options=0   # Options set
 
 
 ##########
 # Function usage
 #
 function usage {
-    echo "Swap"
+    echo "Swap ${VERSION}"
     echo 
     echo "Usage"
     echo "  -l  --list          Show current swap confguration"
@@ -106,7 +116,7 @@ function usage {
     echo
     echo "  -h  --help          Show this help"
     echo
-    exit 0
+    exit ${RV_GOOD}
 } # eof usage
 
 
@@ -172,7 +182,7 @@ done
 # code that -l is the default if no option is given. I've opted for an error message.
 if (( options == 0 )) ; then
     usage
-    exit 2
+    exit ${RV_ENOARG}
 
     #(( options=$options+opt_l ))
 fi
@@ -192,7 +202,7 @@ if (( (options & opt_l) )) ; then
         echo
         echo "** Active swap spaces ($CMD_SWAPON)"
         echo -----------------------------------------------------
-        swapon -s
+        ${SWAPON} -s
     else
         echo "!! Omitted output from $CMD_SWAPON."
     fi
@@ -216,7 +226,7 @@ if (( (options & opt_l) )) ; then
         echo
         echo "** Swap usage ($CMD_FREE)"
         echo -----------------------------------------------------
-        free
+        ${CMD_FREE}
     else
         echo "!! Omitted output from $CMD_FREE."
     fi
@@ -246,7 +256,7 @@ if (( (options & opt_l) )) ; then
         fi
     fi
     
-    exit 0
+    exit ${RV_GOOD}
 fi # eof $opt_l
 
 
@@ -256,13 +266,14 @@ fi # eof $opt_l
 user=$( id | cut -d= -f2 | cut -d'(' -f1 )
 if [[ $user -ne 0 ]] ; then
     echo "Error : swap needs to be run as root." >&2
-    exit 2
+    exit ${RV_ENOROOT}
 fi
 
 
 ##########
 # Activate the given swapspace.
-# Swapspace can not be place in /usr, /etc 
+# Swapspace can only be placed in /, /var/tmp, and /etc (only
+# swapdevices)
 #
 if (( (options & opt_e) && (options & opt_f) )) ; then
 
@@ -271,16 +282,14 @@ if (( (options & opt_e) && (options & opt_f) )) ; then
         if [[ $opt_f_arg == /dev* ]] ; then
         ## Process a device as swapspace.
 
-            echo "Swapspace is a device"
-        
             if [[ -e $opt_f_arg ]] ; then
                 if ${CMD_SWAPON} -s | ${CMD_GREP} $opt_f_arg >/dev/null 2>&1 ; then
                     echo "Error: $opt_f_arg already in use as swapspace" >&2
-                    exit 3
+                    exit ${RV_EACT}
                 fi
             else
                 echo "Error: $opt_f_arg not found." >&2
-                exit 3
+                exit ${RV_EACT}
             fi
 
         else 
@@ -292,20 +301,20 @@ if (( (options & opt_e) && (options & opt_f) )) ; then
                 # the swapspace.
                 if ${CMD_SWAPON} -s | ${CMD_GREP} $opt_f_arg >/dev/null 2>&1 ; then
                     echo "Error : $opt_f_arg already in use as swapspace" >&2
-                    exit 3
+                    exit ${RV_EACT}
                 fi
 
                 owner=$( ls -l $opt_f_arg | ${CMD_GAWK} '{print $3}' )
                 group=$( ls -l $opt_f_arg | ${CMD_GAWK} '{print $4}' )
                 if [[ $owner != root || $group != root ]] ; then
                     echo "Error : $opt_f_arg is not owned by root ($owner:$group)" >&2
-                    exit 3
+                    exit ${RV_EACT}
                 fi
 
                 fperm=$( ${CMD_STAT} -c "%a" $opt_f_arg )
                 if [[ $fperm != 600 ]] ; then
                     echo "Error: $opt_f_arg hso incorrect permissions ($fperm)" >&2
-                    exit 3
+                    exit ${RV_EACT}
                 fi
             else
                 # If the swapspace does not exist, we are going to create on.
@@ -316,7 +325,7 @@ if (( (options & opt_e) && (options & opt_f) )) ; then
                 dirname=$(dirname $opt_f_arg)
                 if [[ $dirname != / && $dirname != /var/tmp ]] ; then
                     echo "Error : Swapspaces can only be placed in / or /var/tmp" >&2
-                    exit 3
+                    exit ${RV_EACT}
                 fi    
                 
                 # If no size is given, we assume 500M. 
@@ -326,7 +335,7 @@ if (( (options & opt_e) && (options & opt_f) )) ; then
                 fi            
                 if echo $opt_s_arg | ${CMD_GREP} -v "^[0-9][0-9]*[MG]$" ; then
                     echo "Error : Given size ($opt_s_arg) not correct" >&2
-                    exit 3
+                    exit ${RV_EACT}
                 fi
 
                 ${CMD_DD} if=/dev/zero of=$opt_f_arg bs=$opt_s_arg count=1 >/dev/null 2>&1
@@ -342,7 +351,7 @@ if (( (options & opt_e) && (options & opt_f) )) ; then
             if [[ -n $opt_f_arg ]] ; then
                 if ${CMD_GREP} $opt_f_arg /etc/fstab >/dev/null 2>/dev/null ; then
                     echo "Warning : $opt_f_arg already configured in /etc/fstab"
-                    exit 3
+                    exit ${RV_EACT}
                 fi
                 (
                     fsline="$opt_f_arg"'   swap   swap                  defaults    0 0'
@@ -352,7 +361,7 @@ if (( (options & opt_e) && (options & opt_f) )) ; then
             fi
         fi
 
-        exit 0
+        exit ${RV_GOOD}
 
     else
         echo "Error: No swapspace given to activate." >&2
@@ -378,7 +387,7 @@ if (( (options & opt_d) && (options & opt_f) )) ; then
             ${CMD_SWAPOFF} $opt_f_arg >/dev/null 2>&1
         else
             echo "Error : $opt_f_arg not in use as swap device" >&2
-            exit 4
+            exit ${RV_EDIS}
         fi
 
         if (( (options&opt_r) )) ; then
@@ -396,13 +405,13 @@ if (( (options & opt_d) && (options & opt_f) )) ; then
             # sure that the swapspace is also removed
             # from the configuration. We ensure this
             # by enabling the -p option.
+            # Make sure that the check for option -p
+            # is done after this point.
             (( options=$options+$opt_p ))
             
         fi
 
         if (( (options&opt_p) )) ; then
-            echo "Changing swap configuration"
-
             (
                 cp /etc/fstab /etc/fstab.swap.$(date +%Y%m%d%H%M%S)
                 ${CMD_GREP} -v $opt_f_arg /etc/fstab > /etc/fstab.swap
@@ -410,16 +419,16 @@ if (( (options & opt_d) && (options & opt_f) )) ; then
             ) >/dev/null 2>&1
         fi
             
-            
-        exit 0
+        exit ${RV_GOOD}
     else
         echo "Error : No swapspace given to deactivate" >&2
-        exit 4
+        exit ${RV_EDIS}
     fi
 
-    exit 0 
+    exit ${RV_GOOD} 
 fi # eof opt_d
 
 usage
+exit ${RV_GOOD}
 
 # eos
